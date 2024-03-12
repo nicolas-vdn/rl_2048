@@ -14,21 +14,30 @@ import matplotlib.pyplot as plt
 import time
 # register name
 s = botsetup("dqn-train")
+    
 
 counter = 0
 GAMMA = 0.99        # POUR ALEXIS
 EPS_START = 0.9     # POUR ALEXIS
 EPS_END = 0.05      # POUR ALEXIS
-EPS_DECAY = 20000   # POUR ALEXIS
+EPS_DECAY = 2000    # POUR ALEXIS
 TAU = 0.005         # POUR ALEXIS
 LR = 0.1            # POUR ALEXIS
 device = 'cpu'
-NB_EPISODES = 2000  # POUR ALEXIS
+NB_EPISODES = 25  # POUR ALEXIS
 
 steps_done = 0
 
-policy_net = DQNLearner(16, 4)
-target_net = DQNLearner(16, 4)
+if os.path.isfile('./policy_scripted.pt'):
+    policy_net = torch.jit.load('./policy_scripted.pt')
+    policy_net.eval()
+else:
+    policy_net = DQNLearner(16, 4)
+
+if os.path.isfile('./target_scripted.pt'):
+    target_net = torch.jit.load('./target_scripted.pt')
+else:
+    target_net = DQNLearner(16, 4)
 
 optimizer = optim.AdamW(policy_net.parameters(), lr=LR, amsgrad=True)
 
@@ -75,10 +84,14 @@ dirs = [down, left, up, right]
 def training(num_episodes, render = False):
     min_it = np.inf
     max_it = 0
+    max_ep_val = 0
+    ep_max_val = 1
     for i in range(num_episodes):
         if (i % 50 == 0 and i != 0):
             print(f"Épisode n°{i}, score moyen des 50 dernières étapes : {np.mean(data[0])}, score de la dernière itération : {data[1][i-1]}. Meilleur score : {np.max(data[1])}")
             print(f"Plus petit score des 50 dernières étapes : {min_it}. Meilleur score des 50 dernières étapes : {max_it}")
+            print(f"Score médian des 50 dernières itérations : {np.median(data[0])}")
+            print(f"Meilleure valeure atteinte : {max_ep_val} à l'épisode {ep_max_val}")
             data[2] += [np.array([np.mean(data[0])] * 10)]
             data[0] = []
             min_it = np.inf
@@ -96,25 +109,22 @@ def training(num_episodes, render = False):
             if not next_state:
                 next_state = None
                 break
+            
+            next_state = np.array(next_state)
+            next_state = next_state.astype(int)
+            next_state = torch.tensor(next_state.flatten(), dtype=torch.float, device=device)
 
             try:
-                zer_count = dict(zip(*np.unique(next_state, return_counts=True)))["0"]
-                next_state = np.array(next_state)
-                next_state = next_state.astype(int)
-
+                zer_count = dict(zip(*np.unique(next_state, return_counts=True)))[0.0]
+                
                 max_val = max(next_state)
-                if max_val == 2048 and not alert_2048:
+                if max_val == 2048.0 and not alert_2048:
                     print(f"2048 atteint à l'époque {i}")
                     alert_2048 = True
 
-                # reward = max(next_state)
-                reward = -((zer_count + (info // 100) + (max(next_state)/10)) / 3) # POUR ALEXIS
+                reward = (zer_count + info / 100 + max_val) * (sum(state) != sum(next_state)) # POUR ALEXIS
             except Exception:
                 reward = 0
-
-            next_state = np.array(next_state)
-            next_state = next_state.astype(int)
-            next_state = torch.tensor(next_state.flatten(), dtype=torch.float, device=device).squeeze()
 
             optimize_model(state, next_state, action, reward)
 
@@ -127,17 +137,22 @@ def training(num_episodes, render = False):
             for key in policy_net_state_dict:
                 target_net_state_dict[key] = policy_net_state_dict[key]*TAU + target_net_state_dict[key]*(1-TAU)
             target_net.load_state_dict(target_net_state_dict)
-            
-            # print(policy_net.layer1.weight)
 
             if state == None:
                 break
-        if (info > max_it): max_it = info
-        if (info < min_it): min_it = info
+        if info > max_it: max_it = info
+        if info < min_it: min_it = info
+        if max_val > max_ep_val:
+            max_ep_val = max_val
+            ep_max_val = i
         data[0].append(info)
         data[1].append(info)
         restart(s)
         time.sleep(0.001)
+    policy_scripted = torch.jit.script(policy_net)
+    policy_scripted.save('policy_scripted.pt')
+    target_scripted = torch.jit.script(target_net)
+    target_scripted.save('target_scripted.pt')
 
 data = [[],[],[]]
 
