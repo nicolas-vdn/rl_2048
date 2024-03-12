@@ -19,10 +19,12 @@ class DQNLearner(nn.Module):
     def __init__(self, n_observations, n_actions):
         super(DQNLearner, self).__init__()
         self.layer1 = nn.Linear(n_observations, 128)    # POUR ALEXIS
-        self.layer2 = nn.Linear(128, 256)               # POUR ALEXIS
-        self.layer3 = nn.Linear(256, 128)               # POUR ALEXIS
-        self.layer4 = nn.Linear(128, 128)               # POUR ALEXIS
-        self.layer5 = nn.Linear(128, n_actions)         # POUR ALEXIS
+        self.layer2 = nn.Linear(128, 128)               # POUR ALEXIS
+        self.layer3 = nn.Linear(128, 256)               # POUR ALEXIS
+        self.layer4 = nn.Linear(256, 256)               # POUR ALEXIS
+        self.layer5 = nn.Linear(256, 128)               # POUR ALEXIS
+        self.layer6 = nn.Linear(128, 128)               # POUR ALEXIS
+        self.layer7 = nn.Linear(128, n_actions)         # POUR ALEXIS
         # Definition des couches
 
     def forward(self, x):

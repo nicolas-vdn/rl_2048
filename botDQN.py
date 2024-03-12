@@ -18,24 +18,29 @@ s = botsetup("dqn-train")
 
 counter = 0
 GAMMA = 0.99        # POUR ALEXIS
-EPS_START = 0.9     # POUR ALEXIS
+EPS_START = 0.45     # POUR ALEXIS
 EPS_END = 0.05      # POUR ALEXIS
-EPS_DECAY = 2000    # POUR ALEXIS
+EPS_DECAY = 50000   # POUR ALEXIS
 TAU = 0.005         # POUR ALEXIS
 LR = 0.1            # POUR ALEXIS
 device = 'cpu'
-NB_EPISODES = 25  # POUR ALEXIS
+NB_EPISODES = 1000  # POUR ALEXIS
+IS_RANDOM = True
+USE_MODEL = True
+save_eps = EPS_START
 
 steps_done = 0
 
-if os.path.isfile('./policy_scripted.pt'):
+if os.path.isfile('./policy_scripted.pt') and USE_MODEL:
     policy_net = torch.jit.load('./policy_scripted.pt')
     policy_net.eval()
 else:
     policy_net = DQNLearner(16, 4)
 
-if os.path.isfile('./target_scripted.pt'):
+if os.path.isfile('./target_scripted.pt') and USE_MODEL:
     target_net = torch.jit.load('./target_scripted.pt')
+    target_net.eval()
+    print("bjr")
 else:
     target_net = DQNLearner(16, 4)
 
@@ -43,18 +48,20 @@ optimizer = optim.AdamW(policy_net.parameters(), lr=LR, amsgrad=True)
 
 def select_action(state):
     global steps_done
+    global save_eps
     sample = random.random()
     eps_threshold = EPS_END + (EPS_START - EPS_END) * \
         math.exp(-1. * steps_done / EPS_DECAY)
     steps_done += 1
-    if sample > eps_threshold:
+    save_eps = eps_threshold
+    if sample > eps_threshold and not IS_RANDOM:
         with torch.no_grad():
             # t.max(1) will return the largest column value of each row.
             # second column on max result is index of where max element was
             # found, so we pick action with the larger expected reward.
             return policy_net.forward(state).max(0).indices.view(1, 1)[0]
     else:
-        return torch.tensor([np.floor(np.random.random() * 4)], device=device, dtype=torch.int64)
+        return torch.tensor([np.floor(np.random.random() * 3)], device=device, dtype=torch.int64)
 
 def optimize_model(state, next_state, action, reward):
 
@@ -91,7 +98,8 @@ def training(num_episodes, render = False):
             print(f"Épisode n°{i}, score moyen des 50 dernières étapes : {np.mean(data[0])}, score de la dernière itération : {data[1][i-1]}. Meilleur score : {np.max(data[1])}")
             print(f"Plus petit score des 50 dernières étapes : {min_it}. Meilleur score des 50 dernières étapes : {max_it}")
             print(f"Score médian des 50 dernières itérations : {np.median(data[0])}")
-            print(f"Meilleure valeure atteinte : {max_ep_val} à l'épisode {ep_max_val}")
+            print(f"Meilleure valeur atteinte : {max_ep_val} à l'épisode {ep_max_val}")
+            print(save_eps)
             data[2] += [np.array([np.mean(data[0])] * 10)]
             data[0] = []
             min_it = np.inf
@@ -122,7 +130,7 @@ def training(num_episodes, render = False):
                     print(f"2048 atteint à l'époque {i}")
                     alert_2048 = True
 
-                reward = (zer_count + info / 100 + max_val) * (sum(state) != sum(next_state)) # POUR ALEXIS
+                reward = (zer_count + info / 100 + max_val**2) * (sum(state) != sum(next_state)) # POUR ALEXIS
             except Exception:
                 reward = 0
 
@@ -142,7 +150,7 @@ def training(num_episodes, render = False):
                 break
         if info > max_it: max_it = info
         if info < min_it: min_it = info
-        if max_val > max_ep_val:
+        if max_val >= max_ep_val:
             max_ep_val = max_val
             ep_max_val = i
         data[0].append(info)
